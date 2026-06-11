@@ -55,40 +55,59 @@ def load_model_and_preprocessor():
         return  # Already loaded
     
     try:
-        # Paths - files are in the parent directory of hr-dashboard
-        # app.py is in hr-dashboard/model-api, so we need to go up 2 levels
-        base_path = Path(__file__).parent.parent.parent
-        model_path_txt = base_path / "lightgbm_model.txt"
-        model_path_pkl = base_path / "lightgbm_model.pkl"
-        preprocessor_path = base_path / "preprocessor.pkl"
-        
-        print(f"Looking for model files in: {base_path}")
-        
-        # Load model - try .txt first (LightGBM/XGBoost), then .pkl (other models)
-        if model_path_txt.exists():
-            # LightGBM/XGBoost model
-            model = LGBMRegressor()
-            model.booster_ = model.booster_.model_from_string(model_path_txt.read_text())
-            print(f"✓ LightGBM model loaded from {model_path_txt}")
-        elif model_path_pkl.exists():
-            # Other models (Random Forest, XGBoost, etc.) saved with joblib
-            import joblib
-            model = joblib.load(model_path_pkl)
-            print(f"✓ Model loaded from {model_path_pkl} (using joblib)")
-        else:
-            print(f"⚠ Model file not found at {model_path_txt} or {model_path_pkl}")
-            print("Please save your model from the notebook")
+        # Search several likely locations for model and preprocessor files
+        search_paths = [
+            Path(__file__).parent,
+            Path(__file__).parent / "models",
+            Path(__file__).parent.parent,
+            Path(__file__).parent.parent / "models",
+            Path(__file__).parent.parent.parent,
+        ]
+
+        found = False
+        for base_path in search_paths:
+            model_path_txt = base_path / "lightgbm_model.txt"
+            model_path_pkl = base_path / "lightgbm_model.pkl"
+            preprocessor_path = base_path / "preprocessor.pkl"
+
+            print(f"Looking for model files in: {base_path}")
+
+            # Load model - try .txt first (LightGBM/XGBoost), then .pkl (other models)
+            if model_path_txt.exists():
+                model = LGBMRegressor()
+                try:
+                    model.booster_ = model.booster_.model_from_string(model_path_txt.read_text())
+                except Exception:
+                    # fallback: try loading with joblib if text approach fails
+                    import joblib
+                    model = joblib.load(model_path_txt)
+                print(f"✓ LightGBM model loaded from {model_path_txt}")
+                found = True
+            elif model_path_pkl.exists():
+                import joblib
+                model = joblib.load(model_path_pkl)
+                print(f"✓ Model loaded from {model_path_pkl} (using joblib)")
+                found = True
+
+            if found:
+                # Load preprocessor if available
+                if preprocessor_path.exists():
+                    with open(preprocessor_path, 'rb') as f:
+                        preprocessor = pickle.load(f)
+                    try:
+                        feature_names = preprocessor.get_feature_names_out()
+                    except Exception:
+                        feature_names = None
+                    print(f"✓ Preprocessor loaded from {preprocessor_path}")
+                else:
+                    print(f"⚠ Preprocessor not found at {preprocessor_path}")
+                    print("Model will work, but preprocessing may not match exactly")
+                break
+
+        if not found:
+            print("⚠ Model file not found in any expected location")
+            print("Please save your model (lightgbm_model.txt or lightgbm_model.pkl) into the model-api folder or a models/ subfolder")
             return
-        
-        # Load preprocessor (optional)
-        if preprocessor_path.exists():
-            with open(preprocessor_path, 'rb') as f:
-                preprocessor = pickle.load(f)
-            feature_names = preprocessor.get_feature_names_out()
-            print(f"✓ Preprocessor loaded from {preprocessor_path}")
-        else:
-            print(f"⚠ Preprocessor not found at {preprocessor_path}")
-            print("Model will work, but preprocessing may not match exactly")
         
     except Exception as e:
         print(f"Error loading model/preprocessor: {e}")
