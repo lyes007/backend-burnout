@@ -192,14 +192,22 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Employee Burnout Prediction API", lifespan=lifespan)
 
 # Enable CORS for Next.js frontend
-# Allow localhost and ngrok URLs
+# Default allowed origins include localhost used during development
 allowed_origins = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
 ]
-# Add ngrok URLs if provided via environment variable
+# Allow configuring additional origins via a comma-separated env var `ALLOWED_ORIGINS`
+env_allowed = os.getenv("ALLOWED_ORIGINS")
+if env_allowed:
+    # split, strip and extend
+    for o in env_allowed.split(','):
+        o = o.strip()
+        if o and o not in allowed_origins:
+            allowed_origins.append(o)
+# Backwards compatibility: keep NGROK_URL if set
 ngrok_url = os.getenv("NGROK_URL")
-if ngrok_url:
+if ngrok_url and ngrok_url not in allowed_origins:
     allowed_origins.append(ngrok_url)
 
 app.add_middleware(
